@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>당뇨병 예측 서비스 | Mayo Clinic 기준</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <!-- 헤더 -->
+    <header class="header">
+      <div class="header-content">
+        <h1>🩺 당뇨병 위험도 평가 시스템</h1>
+        <p>Mayo Clinic 기준으로 당뇨병 위험도를 예측하고 식단 분석을 제공합니다</p>
+      </div>
+    </header>
+
+    <!-- 메인 콘텐츠 -->
+    <div class="content">
+      <!-- 입력 폼 -->
+      <section class="input-section">
+        <h2>📋 건강 정보 입력</h2>
+        <p class="subtitle">정확한 예측을 위해 모든 정보를 입력해주세요</p>
+
+        <form id="predictionForm" class="form">
+          <!-- 1행: 나이 & 성별 -->
+          <div class="form-row">
+            <div class="form-group">
+              <label for="age">나이 *</label>
+              <input type="number" id="age" name="age" placeholder="예: 45" min="0" max="120" required>
+              <small>현재 나이를 입력하세요</small>
+            </div>
+            <div class="form-group">
+              <label for="gender">성별</label>
+              <select id="gender" name="gender">
+                <option value="male">남성</option>
+                <option value="female">여성</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 2행: 신체 정보 -->
+          <div class="form-row">
+            <div class="form-group">
+              <label for="height">키 (cm) *</label>
+              <input type="number" id="height" name="height" placeholder="예: 175" min="50" max="250" required>
+              <small>센티미터 단위로 입력</small>
+            </div>
+            <div class="form-group">
+              <label for="weight">체중 (kg) *</label>
+              <input type="number" id="weight" name="weight" placeholder="예: 75" min="10" max="300" step="0.1" required>
+              <small>킬로그램 단위로 입력</small>
+            </div>
+          </div>
+
+          <!-- 3행: 혈당 정보 (민감정보) -->
+          <div class="form-row">
+            <div class="form-group">
+              <label for="fbs">공복 혈당 (mg/dL) * <span class="sensitive">[민감정보]</span></label>
+              <input type="number" id="fbs" name="fbs" placeholder="예: 110" min="40" max="500" required>
+              <small>최근 검진 결과의 공복 혈당 수치</small>
+            </div>
+            <div class="form-group">
+              <label for="familyHistory">당뇨병 가족력</label>
+              <select id="familyHistory" name="familyHistory">
+                <option value="false">없음</option>
+                <option value="true">있음</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 4행: 식단 정보 -->
+          <div class="form-section">
+            <h3>🍽️ 최근 하루 식단 정보 (선택사항)</h3>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="carbs">탄수화물 (g)</label>
+                <input type="number" id="carbs" name="carbs" placeholder="예: 250" min="0" max="500">
+              </div>
+              <div class="form-group">
+                <label for="sugar">당분 (g)</label>
+                <input type="number" id="sugar" name="sugar" placeholder="예: 50" min="0" max="200">
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="fiber">식이 섬유질 (g)</label>
+                <input type="number" id="fiber" name="fiber" placeholder="예: 25" min="0" max="100">
+              </div>
+              <div class="form-group">
+                <label for="protein">단백질 (g)</label>
+                <input type="number" id="protein" name="protein" placeholder="예: 75" min="0" max="200">
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="sugaryDrinks">당분 음료 개수</label>
+                <input type="number" id="sugaryDrinks" name="sugaryDrinks" placeholder="예: 2" min="0" max="10">
+                <small>음료(소다, 주스, 커피) 개수</small>
+              </div>
+              <div class="form-group">
+                <label for="alcohol">알코올 음료 (잔)</label>
+                <input type="number" id="alcohol" name="alcohol" placeholder="예: 1" min="0" max="10">
+              </div>
+            </div>
+          </div>
+
+          <!-- 제출 버튼 -->
+          <button type="submit" class="btn-submit">위험도 평가 하기</button>
+
+          <p class="disclaimer">
+            ⚠️ 본 서비스는 교육용 정보이며, 의료 진단이 아닙니다. 정확한 진단을 위해 전문 의료진 상담이 필수입니다.
+          </p>
+        </form>
+      </section>
+
+      <!-- 결과 섹션 -->
+      <section id="resultSection" class="result-section hidden">
+        <h2>📊 평가 결과</h2>
+
+        <!-- 위험도 카드 -->
+        <div class="result-card risk-card" id="riskCard">
+          <h3>당뇨병 위험도</h3>
+          <div class="risk-meter">
+            <div id="riskPercentage" class="risk-value">0%</div>
+            <div id="riskLevel" class="risk-level">평가 중...</div>
+          </div>
+          <p id="riskDescription" class="risk-description"></p>
+        </div>
+
+        <!-- 건강 지표 -->
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <h4>신체질량지수</h4>
+            <div class="metric-value" id="bmiValue">-</div>
+            <p class="metric-label">BMI</p>
+          </div>
+          <div class="metric-card">
+            <h4>혈당 수치</h4>
+            <div class="metric-value" id="fbsValue">-</div>
+            <p class="metric-label">mg/dL</p>
+          </div>
+          <div class="metric-card">
+            <h4>식단 점수</h4>
+            <div class="metric-value" id="dietScore">-</div>
+            <p class="metric-label">점수</p>
+          </div>
+          <div class="metric-card">
+            <h4>예상 나이</h4>
+            <div class="metric-value" id="lifeExpectancy">-</div>
+            <p class="metric-label">세</p>
+          </div>
+        </div>
+
+        <!-- 권장사항 -->
+        <div class="result-card recommendations-card">
+          <h3>💡 맞춤형 권장사항</h3>
+          <ul id="recommendations" class="recommendations-list"></ul>
+        </div>
+
+        <!-- 다시 평가 버튼 -->
+        <button onclick="resetForm()" class="btn-reset">다시 평가하기</button>
+      </section>
+    </div>
+
+    <!-- 건강 팁 섹션 -->
+    <section class="tips-section">
+      <h2>💪 건강 관리 팁</h2>
+      <div class="tips-grid">
+        <div class="tip-card">
+          <h3 onclick="loadTips('diet')">🥗 식단 관리</h3>
+          <div class="tip-content hidden" id="diet-tips"></div>
+        </div>
+        <div class="tip-card">
+          <h3 onclick="loadTips('exercise')">🏃 운동 계획</h3>
+          <div class="tip-content hidden" id="exercise-tips"></div>
+        </div>
+        <div class="tip-card">
+          <h3 onclick="loadTips('monitoring')">📈 정기 검진</h3>
+          <div class="tip-content hidden" id="monitoring-tips"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 푸터 -->
+    <footer class="footer">
+      <p>🩺 당뇨병 예측 서비스 | Mayo Clinic 기준 | 교육용 정보</p>
+      <p>의료 진단을 위해서는 전문 의료진의 상담이 필수입니다.</p>
+    </footer>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "name": "sugar-level",
+  "version": "1.0.0",
+  "description": "당뇨병 예측 및 식단 분석 서비스 - Mayo Clinic 기준",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js"
+  },
+  "keywords": ["diabetes", "prediction", "diet", "health"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
