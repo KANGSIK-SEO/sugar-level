@@ -2,15 +2,26 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
+const multer = require('multer');
+const axios = require('axios');
+const fs = require('fs');
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // 미들웨어
 app.use(cors());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json({ limit: '50mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static('public'));
+
+// Multer 설정 (메모리에 저장)
+const storage = multer.memoryStorage();
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+});
 
 // =============================================
 // 당뇨 예측 엔진 (Mayo Clinic 기준)
@@ -297,6 +308,205 @@ app.get('/api/tips/:category', (req, res) => {
     category: category,
     tips: tips[category] || tips.diet
   });
+});
+
+// =============================================
+// 이미지 분석 및 챗봇 API
+// =============================================
+
+/**
+ * Claude Vision을 사용하여 음식 이미지 분석
+ */
+async function analyzeFoodImage(base64Image) {
+  try {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return {
+        error: 'API 키가 설정되지 않았습니다. .env 파일에 ANTHROPIC_API_KEY를 설정하세요.',
+        fallback: true
+      };
+    }
+
+    const response = await axios.post('https://api.anthropic.com/v1/messages', {
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 1024,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: 'image/jpeg',
+                data: base64Image.replace(/^data:image\/(png|jpeg|jpg|gif|webp);base64,/, '')
+              }
+            },
+            {
+              type: 'text',
+              text: `이 음식 사진을 분석해주세요. 다음 정보를 JSON 형식으로 제공해주세요:
+{
+  "foodName": "음식 이름",
+  "carbs": 탄수화물(g),
+  "sugar": 당분(g),
+  "fiber": 식이섬유(g),
+  "protein": 단백질(g),
+  "calories": 칼로리(kcal),
+  "servingSize": "1인분 (g)",
+  "healthRating": "매우나쁨/나쁨/보통/좋음/매우좋음",
+  "description": "음식에 대한 설명과 건강 조언"
+}
+
+JSON만 반환해주세요.`
+            }
+          ]
+        }
+      ]
+    }, {
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      }
+    });
+
+    const content = response.data.content[0].text;
+    try {
+      return JSON.parse(content);
+    } catch {
+      // JSON 파싱 실패 시 텍스트 반환
+      return { description: content };
+    }
+  } catch (error) {
+    console.error('이미지 분석 오류:', error.response?.data || error.message);
+    return {
+      error: '이미지 분석 중 오류가 발생했습니다.',
+      details: error.message
+    };
+  }
+}
+
+/**
+ * 이미지 분석 엔드포인트
+ */
+app.post('/api/analyze-image', upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: '이미지를 선택해주세요.' });
+    }
+
+    // Base64로 변환
+    const base64Image = req.file.buffer.toString('base64');
+
+    // 이미지 분석
+    const analysisResult = await analyzeFoodImage(base64Image);
+
+    if (analysisResult.error && analysisResult.fallback) {
+      // API 키 없을 때 기본값 반환
+      return res.json({
+        success: false,
+        message: analysisResult.error,
+        fallback: true
+      });
+    }
+
+    res.json({
+      success: true,
+      analysis: analysisResult
+    });
+  } catch (error) {
+    console.error('이미지 분석 오류:', error);
+    res.status(500).json({ error: '이미지 분석 처리 중 오류가 발생했습니다.' });
+  }
+});
+
+/**
+ * 챗봇 대화 및 당뇨 예측 엔드포인트
+ */
+app.post('/api/chat', (req, res) => {
+  try {
+    const { message, userProfile, analyzedFood } = req.body;
+
+    if (!message) {
+      return res.status(400).json({ error: '메시지를 입력해주세요.' });
+    }
+
+    // 사용자 프로필에서 필수 정보 추출
+    const age = parseInt(userProfile?.age) || 40;
+    const weight = parseFloat(userProfile?.weight) || 70;
+    const height = parseFloat(userProfile?.height) / 100 || 1.75;
+    const fbs = parseInt(userProfile?.fbs) || 100;
+    const gender = userProfile?.gender || 'male';
+    const familyHistory = userProfile?.familyHistory === 'true' || userProfile?.familyHistory === true;
+
+    // 분석된 음식 정보 추가
+    const dietData = {
+      carbs: analyzedFood?.carbs || userProfile?.diet?.carbs || 0,
+      sugar: analyzedFood?.sugar || userProfile?.diet?.sugar || 0,
+      fiber: analyzedFood?.fiber || userProfile?.diet?.fiber || 0,
+      protein: analyzedFood?.protein || userProfile?.diet?.protein || 0,
+      sugaryDrinks: analyzedFood?.sugaryDrinks || userProfile?.diet?.sugaryDrinks || 0,
+      alcohol: analyzedFood?.alcohol || userProfile?.diet?.alcohol || 0,
+      calories: analyzedFood?.calories || 0
+    };
+
+    // 당뇨 예측 실행
+    const riskData = predictor.calculateComprehensiveRisk({
+      age,
+      weight,
+      height,
+      fbs,
+      familyHistory,
+      diet: dietData
+    });
+
+    const riskCategory = predictor.getRiskCategory(riskData.comprehensiveRisk);
+    const genderFactor = gender === 'female' ? 0.9 : 1.1;
+    const predictedAge = predictor.predictLifeExpectancy(age, riskData.comprehensiveRisk, genderFactor);
+    const recommendations = predictor.getRecommendations(riskData);
+
+    // 챗봇 응답 생성
+    let chatResponse = '';
+    const riskPercent = (riskData.comprehensiveRisk * 100).toFixed(0);
+    const yearsAtRisk = Math.round((82 - predictedAge) * 10) / 10;
+
+    if (message.toLowerCase().includes('몇') || message.toLowerCase().includes('살')) {
+      // "몇 살까지 살아요?" 질문에 대한 응답
+      chatResponse = `🩺 현재 당뇨병 위험도를 바탕으로 분석하면, 약 <strong>${predictedAge}세</strong>까지 예상됩니다.\n\n`;
+      chatResponse += `📊 상세 정보:\n`;
+      chatResponse += `• 당뇨병 위험도: ${riskPercent}% (${riskCategory.label})\n`;
+      chatResponse += `• BMI: ${riskData.bmi.toFixed(1)}\n`;
+      chatResponse += `• 공복혈당: ${fbs} mg/dL\n`;
+      chatResponse += `• 식단 점수: ${(riskData.dietScore * 100).toFixed(0)}점\n\n`;
+      chatResponse += `💡 건강 개선 권장사항:\n`;
+      recommendations.forEach((rec, idx) => {
+        chatResponse += `${idx + 1}. ${rec}\n`;
+      });
+
+      if (riskPercent >= 70) {
+        chatResponse += `\n⚠️ <strong>당뇨병 위험도가 높습니다.</strong> 전문 의료진과 상담하시기 바랍니다.`;
+      }
+    } else {
+      // 일반 질문에 대한 응답
+      chatResponse = `안녕하세요! 저는 Mayo Clinic 기준의 당뇨병 전문의 AI입니다.\n\n`;
+      chatResponse += `현재 당신의 당뇨병 위험도는 <strong>${riskPercent}%</strong>이며, `;
+      chatResponse += `예상 수명은 <strong>약 ${predictedAge}세</strong>입니다.\n\n`;
+      chatResponse += `"몇 살까지 살아요?" 라고 물어보시면 더 자세한 건강 정보와 권장사항을 드리겠습니다.`;
+    }
+
+    res.json({
+      success: true,
+      message: chatResponse,
+      prediction: {
+        predictedAge: predictedAge,
+        riskPercent: riskPercent,
+        riskLevel: riskCategory.label,
+        recommendations: recommendations
+      }
+    });
+  } catch (error) {
+    console.error('챗봇 오류:', error);
+    res.status(500).json({ error: '챗봇 처리 중 오류가 발생했습니다.' });
+  }
 });
 
 // 홈페이지
